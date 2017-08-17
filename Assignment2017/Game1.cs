@@ -1,16 +1,28 @@
-﻿using Microsoft.Xna.Framework;
+﻿using System;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Microsoft.Xna.Framework.Audio;
 
 namespace Assignment2017
 {
-    /// <summary>
-    /// This is the main type for your game.
-    /// </summary>
+
     public class Game1 : Game
     {
         GraphicsDeviceManager graphics;
-        SpriteBatch spriteBatch;
+
+        Vector3 cameraPosition = new Vector3(0.0f, 0.0f, GameConstants.CameraHeight);
+        Matrix projectionMatrix;
+        Matrix viewMatrix;
+        SoundEffect soundEngine;
+        SoundEffectInstance soundEngineInstance;
+        SoundEffect soundHyperspaceActivation;
+
+        Ship ship = new Ship();
+        Model asteroidModel;
+        Matrix[] asteroidTransforms;
+        Asteroid[] asteroidList = new Asteroid[GameConstants.NumAsteroids];
+        Random random = new Random();
 
         public Game1()
         {
@@ -18,66 +30,123 @@ namespace Assignment2017
             Content.RootDirectory = "Content";
         }
 
-        /// <summary>
-        /// Allows the game to perform any initialization it needs to before starting to run.
-        /// This is where it can query for any required services and load any non-graphic
-        /// related content.  Calling base.Initialize will enumerate through any components
-        /// and initialize them as well.
-        /// </summary>
+
         protected override void Initialize()
         {
-            // TODO: Add your initialization logic here
-
+            projectionMatrix = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(45.0f), GraphicsDevice.DisplayMode.AspectRatio, GameConstants.CameraHeight - 1000f, GameConstants.CameraHeight + 1000f);
+            viewMatrix = Matrix.CreateLookAt(cameraPosition, Vector3.Zero, Vector3.Up);
             base.Initialize();
         }
+        
+        private Matrix[] SetupEffectDefaults(Model myModel)
+        {
+            Matrix[] absoluteTransforms = new Matrix[myModel.Bones.Count];
+            myModel.CopyAbsoluteBoneTransformsTo(absoluteTransforms);
 
-        /// <summary>
-        /// LoadContent will be called once per game and is the place to load
-        /// all of your content.
-        /// </summary>
+            foreach (ModelMesh mesh in myModel.Meshes)
+            {
+                foreach (BasicEffect effect in mesh.Effects)
+                {
+                    effect.EnableDefaultLighting();
+                    effect.Projection = projectionMatrix;
+                    effect.View = viewMatrix;
+                }
+            }
+            return absoluteTransforms;
+        }
+
         protected override void LoadContent()
         {
-            // Create a new SpriteBatch, which can be used to draw textures.
-            spriteBatch = new SpriteBatch(GraphicsDevice);
-
-            // TODO: use this.Content to load your game content here
+            ship.Model = Content.Load<Model>("Models\\SmallShip");
+            ship.Transforms = SetupEffectDefaults(ship.Model);
+            soundEngine = Content.Load<SoundEffect>("Audio\\engine_2");
+            soundEngineInstance = soundEngine.CreateInstance();
+            soundHyperspaceActivation = Content.Load<SoundEffect>("Audio\\hyperspace_activate");
+            
+            
         }
 
-        /// <summary>
-        /// UnloadContent will be called once per game and is the place to unload
-        /// game-specific content.
-        /// </summary>
+
         protected override void UnloadContent()
         {
-            // TODO: Unload any non ContentManager content here
         }
 
-        /// <summary>
-        /// Allows the game to run logic such as updating the world,
-        /// checking for collisions, gathering input, and playing audio.
-        /// </summary>
-        /// <param name="gameTime">Provides a snapshot of timing values.</param>
+        Vector3 modelVelocity = Vector3.Zero;
+
+        
         protected override void Update(GameTime gameTime)
         {
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
                 Exit();
 
-            // TODO: Add your update logic here
+            UpdateInput();
+
+            ship.Position += ship.Velocity;
+            ship.Velocity *= 0.95f;
 
             base.Update(gameTime);
         }
 
-        /// <summary>
-        /// This is called when the game should draw itself.
-        /// </summary>
-        /// <param name="gameTime">Provides a snapshot of timing values.</param>
+        private void UpdateInput()
+        {
+            GamePadState currentState = GamePad.GetState(PlayerIndex.One);
+            if (currentState.IsConnected)
+            {
+                ship.Update(currentState);
+
+                if (currentState.Triggers.Right>0)
+                {
+                    if (soundEngineInstance.State==SoundState.Stopped)
+                    {
+                        soundEngineInstance.Volume = 0.75f;
+                        soundEngineInstance.IsLooped = true;
+                        soundEngineInstance.Play();
+                    }
+                    else
+                    {
+                        soundEngineInstance.Resume();
+                    }
+                }
+                else if (currentState.Triggers.Right==0)
+                {
+                    if (soundEngineInstance.State==SoundState.Playing)
+                    {
+                        soundEngineInstance.Pause();
+                    }
+                }
+
+                if (currentState.Buttons.A==ButtonState.Pressed)
+                {
+                    ship.Position = Vector3.Zero;
+                    ship.Velocity = Vector3.Zero;
+                    ship.Rotation = 0.0f;
+                    soundHyperspaceActivation.Play();
+                }
+            }
+            
+        }
+        
+
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.Clear(Color.CornflowerBlue);
 
-            // TODO: Add your drawing code here
-
+            Matrix shipTransformMatrix = ship.RotationMatrix * Matrix.CreateTranslation(ship.Position);
+            DrawModel(ship.Model, shipTransformMatrix, ship.Transforms);
             base.Draw(gameTime);
+        }
+
+        public static void DrawModel(Model model, Matrix modelTransform, Matrix[] absoluteBoneTransforms)
+        {
+            foreach (ModelMesh mesh in model.Meshes)
+            {
+                foreach (BasicEffect effect in mesh.Effects)
+                {
+                    effect.World = absoluteBoneTransforms[mesh.ParentBone.Index] * modelTransform;
+                }
+                mesh.Draw();
+            }
+            
         }
     }
 }
