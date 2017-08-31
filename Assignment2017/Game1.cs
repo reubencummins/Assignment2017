@@ -1,14 +1,21 @@
 ﻿using System;
+using Microsoft.CSharp;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Audio;
+using Microsoft.AspNet.SignalR.Client;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Headers;
 
 namespace Assignment2017
 {
 
     public class Game1 : Game
     {
+
+        static HttpClient client = new HttpClient();
         GraphicsDeviceManager graphics;
         SpriteBatch spriteBatch;
 
@@ -22,6 +29,15 @@ namespace Assignment2017
         SoundEffect soundExplosion3;
         SoundEffect soundWeaponsFire;
 
+        enum GameState
+        {
+            Title, Game, HiScores
+        }
+
+        private GameState gameState = GameState.Title;
+        private bool connected = false;
+        HubConnection hubConnection;
+        IHubProxy gameHubProxy;
 
         Model asteroidModel;
         Model bulletModel;
@@ -43,20 +59,52 @@ namespace Assignment2017
         Viewport leftViewport;
         Viewport rightViewport;
         float aspectRatio;
+        string[] messages = new string[10];
+        
+        
 
         public Game1()
         {
             graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
             aspectRatio = (float)GraphicsDeviceManager.DefaultBackBufferWidth / (2 * GraphicsDeviceManager.DefaultBackBufferHeight);
+            for (int i = 0; i < messages.Length; i++)
+            {
+                messages[i] = "...";
+            }
         }
 
+        private async System.Threading.Tasks.Task ConnectAsync()
+        {
+            client.BaseAddress = new Uri("http://localhost:53241");
+            client.DefaultRequestHeaders.Accept.Clear();
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            hubConnection = new HubConnection("http://localhost:53241/");
+            gameHubProxy = hubConnection.CreateHubProxy("GameHub");
+            gameHubProxy.On<string>("notify", text => NewMessage(text));
+            gameHubProxy.On("accept", () => connected = true);
+            await hubConnection.Start();
+            await gameHubProxy.Invoke("AddPlayer", "Player");
+        }
+        
+        private void NewMessage(string message)
+        {
+            for (int i = 1; i < messages.Length; i++)
+            {
+                messages[i - 1] = messages[i];
+            }
+            messages[messages.Length - 1] = message;
+        }
 
         protected override void Initialize()
         {
             projectionMatrix = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(45.0f), GraphicsDevice.DisplayMode.AspectRatio, GameConstants.CameraHeight - 1000f, GameConstants.CameraHeight + 1000f);
             viewMatrix = Matrix.CreateLookAt(cameraPosition, Vector3.Zero, Vector3.Up);
+            NewMessage("Init");
+            ConnectAsync();
             base.Initialize();
+
         }
         
         private Matrix[] SetupEffectDefaults(Model myModel)
@@ -109,13 +157,50 @@ namespace Assignment2017
 
         Vector3 modelVelocity = Vector3.Zero;
 
-        
         protected override void Update(GameTime gameTime)
+        {
+            switch (gameState)
+            {
+                case GameState.Title:
+                    UpdateTitle(gameTime);
+                    break;
+                case GameState.Game:
+                    UpdateGame(gameTime);
+                    break;
+                case GameState.HiScores:
+                    UpdateHiScores(gameTime);
+                    break;
+                default:
+                    break;
+            }
+            base.Update(gameTime);
+        }
+
+        private void UpdateHiScores(GameTime gameTime)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void UpdateTitle(GameTime gameTime)
+        {
+            if (connected)
+            {
+                if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
+                    Exit();
+                if (GamePad.GetState(PlayerIndex.One).Buttons.Start == ButtonState.Pressed)
+                {
+                    gameState = GameState.Game;
+                    NewMessage("Start");
+                } 
+            }
+        }
+
+        private void UpdateGame(GameTime gameTime)
         {
             player.Update(gameTime);
 
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
-                Exit();
+                gameState = GameState.Title;
 
             UpdateInput();
             
@@ -130,10 +215,7 @@ namespace Assignment2017
                 soundExplosion3.Play();
             }
             
-            base.Update(gameTime);
         }
-
-
 
         private void UpdateInput()
         {
@@ -203,9 +285,56 @@ namespace Assignment2017
                     return (currentState.DPad.Down == ButtonState.Pressed && lastState.DPad.Down == ButtonState.Released);
                 case Buttons.DPadUp:
                     return (currentState.DPad.Up == ButtonState.Pressed && lastState.DPad.Up == ButtonState.Released);
-
+                case Buttons.Start:
+                    return (currentState.Buttons.Start == ButtonState.Pressed && lastState.Buttons.Start == ButtonState.Released);
             }
             return false;
+        }
+
+
+        protected override void Draw(GameTime gameTime)
+        {
+            switch (gameState)
+            {
+                case GameState.Title:
+                    DrawTitle();
+                    break;
+                case GameState.Game:
+                    DrawGame(gameTime);
+                    break;
+                case GameState.HiScores:
+                    DrawHiScores();
+                    break;
+                default:
+                    break;
+            }
+
+            spriteBatch.Begin();
+            for (int i = 0; i < messages.Length; i++)
+            {
+                spriteBatch.DrawString(font, messages[i], scorePosition + new Vector2(0, 20 * i), Color.LightBlue);
+            }
+            spriteBatch.End();
+            base.Draw(gameTime);
+        }
+
+        private void DrawHiScores()
+        {
+            throw new NotImplementedException();
+        }
+
+        private void DrawTitle()
+        {
+            spriteBatch.Begin();
+            spriteBatch.Draw(stars, new Rectangle(0, 0, 800, 600), Color.White);
+            if (connected)
+            {
+                spriteBatch.DrawString(font, "Press Start to begin", (new Vector2(GraphicsDevice.Viewport.Width / 2, GraphicsDevice.Viewport.Height / 2)), Color.White);
+                spriteBatch.DrawString(font, gameState.ToString(), scorePosition, Color.Red);
+            }
+            else
+                spriteBatch.DrawString(font, "Waiting for connection", scorePosition, Color.White);
+            spriteBatch.End();
         }
 
         void DrawPlayer(Player player, Viewport viewport)
@@ -245,10 +374,9 @@ namespace Assignment2017
             spriteBatch.End();
         }
 
-        protected override void Draw(GameTime gameTime)
+        private void DrawGame(GameTime gameTime)
         {
             DrawPlayer(player, leftViewport);
-            base.Draw(gameTime);
         }
 
         public static void DrawModel(Model model, Matrix modelTransform, Matrix[] absoluteBoneTransforms)
