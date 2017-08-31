@@ -20,6 +20,8 @@ namespace Assignment2017
         public Vector3 Velocity = Vector3.Zero;
         private const float VelocityScale = 5.0f;
 
+        public bool isActive = true;
+
         public Matrix RotationMatrix = Matrix.CreateRotationX(MathHelper.PiOver2);
         private float rotation;
         public float Rotation
