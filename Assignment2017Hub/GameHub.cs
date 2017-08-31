@@ -26,9 +26,9 @@ namespace Assignment2017Hub
             return base.OnConnected();
         }
 
-        public void AddScore(int score)
+        public void PlayerStart()
         {
-            
+            Clients.Caller.welcome();
         }
     }
 }

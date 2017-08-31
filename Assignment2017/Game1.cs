@@ -84,10 +84,17 @@ namespace Assignment2017
             gameHubProxy = hubConnection.CreateHubProxy("GameHub");
             gameHubProxy.On<string>("notify", text => NewMessage(text));
             gameHubProxy.On("accept", () => connected = true);
+            gameHubProxy.On("spawnSpecial", () => SpawnSpecial());
+            gameHubProxy.On("welcome", () => NewMessage("Welcome to space!"));
             await hubConnection.Start();
             await gameHubProxy.Invoke("AddPlayer", "Player");
         }
-        
+
+        private void SpawnSpecial()
+        {
+            //add special object
+        }
+
         private void NewMessage(string message)
         {
             for (int i = 1; i < messages.Length; i++)
